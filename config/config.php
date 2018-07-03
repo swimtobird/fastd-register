@@ -12,8 +12,9 @@ return [
         //redis
         'driver' => Registry\Adapter\RedisRegistry::class,
         'options' => [
-            'host' => '11.11.11.11',
+            'host' => '10.0.75.1',
             'port' => 6379,
+            'dbindex' => 0
         ],
         //zookeeper
         /*'driver' => 'zookeeper',

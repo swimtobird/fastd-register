@@ -11,6 +11,7 @@ namespace Registry\Adapter;
 
 use Registry\Node;
 use Registry\Registry;
+use SebastianBergmann\GlobalState\RuntimeException;
 
 class RedisRegistry extends Registry
 {
@@ -30,12 +31,28 @@ class RedisRegistry extends Registry
      */
     public function __construct($config)
     {
-        $this->redis = new \Redis();
+        if (null === !extension_loaded('redis') && !class_exists(\Predis\Client::class)) {
+            throw new RuntimeException('Cannot find the "redis" extension, and "predis/predis" is not installed');
+        }
 
-        $this->redis->connect($config['host'], $config['port']);
+        $class = extension_loaded('redis') ? \Redis::class : \Predis\Client::class;
 
-        if (isset($config['auth']) && $config['auth']) {
-            $this->redis->auth($config['auth']);
+        if (is_a($class, \Redis::class, true)) {
+            $this->redis = new $class;
+            $this->redis->connect($config['host'], $config['port']);
+            if (isset($config['auth']) && $config['auth']) {
+                $this->redis->auth($config['auth']);
+            }
+            if (isset($config['dbindex']) && is_int($config['dbindex'])) {
+                $this->redis->select(1);
+            }
+        } else {
+            $this->redis = new $class([
+                'scheme' => 'tcp',
+                'host' => $config['host'],
+                'database' => $config['dbindex'] ?? null,
+                'password' => $config['auth'] ?? null
+            ]);
         }
     }
 

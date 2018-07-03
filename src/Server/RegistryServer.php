@@ -8,17 +8,51 @@
 
 namespace Server;
 
+use FastD\Packet\Json;
+use FastD\Servitization\OnWorkerStart;
 use FastD\Servitization\Server\TCPServer;
+use Registry\Node;
 use Runner\Validator\Validator;
 use Support\Consumer\Broadcast;
 use swoole_server;
 
 class RegistryServer extends TCPServer
 {
+    use OnWorkerStart;
     /**
-     * @var RegistryEntity
+     * @var Node $node
      */
-    protected $entity;
+    protected $node;
+
+    public function doWork(swoole_server $server, $fd, $data, $from_id)
+    {
+        //校验格式
+        $data = Json::decode($data, true);
+        if (!$data || !is_array($data)) {
+            return 0;
+        }
+
+        try {
+            $this->validate($data);
+        } catch (RuntimeException $exception) {
+            $server->send($fd, "error:{$exception->getMessage()}");
+        }
+        //生成注册数据
+        $this->node = (new Node($data));
+
+        //检查配置是否存在
+        if (!config()->has('registry')) {
+            return 0;
+        }
+
+        //注册配置
+        registry()->register($this->node);
+
+        if ($this->isBroadcast()) {
+            $this->broadcastUpdateNode();
+        }
+        $server->send($fd, 'ok');
+    }
 
     /**
      * @param swoole_server $server
@@ -27,9 +61,9 @@ class RegistryServer extends TCPServer
      */
     public function doClose(swoole_server $server, $fd, $fromId)
     {
-        if ($this->entity) {
+        if ($this->node) {
             //服务断开连接，移除注册配置
-            registry()->unregister($this->entity);
+            registry()->unregister($this->node);
 
             if ($this->isBroadcast()) {
                 $this->broadcastUpdateNode();
